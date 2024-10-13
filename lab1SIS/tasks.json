@@ -1,0 +1,24 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-lab1",
+            "type": "shell",
+            "command": "gcc",
+            "args": [
+                "-fopenmp",                 // Para habilitar OpenMP
+                "-I/usr/include/cfitsio",    // Ruta de los headers de cfitsio
+                "${workspaceFolder}/lab1.c", // Tu archivo de código fuente
+                "-o",
+                "${workspaceFolder}/lab1",   // El ejecutable resultante
+                "-lcfitsio"                  // Linkear con la librería cfitsio
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Tarea para compilar lab1 con OpenMP y cfitsio"
+        }
+    ]
+}
