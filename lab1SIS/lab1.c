@@ -94,66 +94,56 @@ PuntoBorde* detectar_bordes(int *imagen, long *naxes, int *num_puntos_borde) {
 }
 
 // Función para detectar elipses usando el algoritmo de Hough
-void detectar_elipses(PuntoBorde *puntos_borde, int num_puntos_borde, double alpha_min) {
-    // Crear una lista para almacenar las elipses encontradas
+void detectar_elipses(PuntoBorde *puntos_borde, int num_puntos_borde, double alpha_min, int num_betas, int num_threads1, int num_threads2) {
     Elipse *elipses = NULL;
     int num_elipses = 0;
 
-    // Para cada par de puntos t y u, calculamos ox, oy, alpha, theta
-    #pragma omp parallel for
+    double delta_beta = (double)num_betas / (2.0 * num_betas);
+    int *vote = (int *)calloc(num_betas, sizeof(int));
+
+    // Paralelismo anidado para la detección de elipses
+    #pragma omp parallel for num_threads(num_threads1)
     for (int i = 0; i < num_puntos_borde; i++) {
         for (int j = i + 1; j < num_puntos_borde; j++) {
             PuntoBorde t = puntos_borde[i];
             PuntoBorde u = puntos_borde[j];
 
-            // Calcular el centro (ox, oy), el semieje mayor (alpha) y la inclinación (theta)
             double ox = (t.x + u.x) / 2.0;
             double oy = (t.y + u.y) / 2.0;
             double alpha = sqrt(pow(u.x - t.x, 2) + pow(u.y - t.y, 2)) / 2.0;
             double theta = atan2(u.y - t.y, u.x - t.x);
 
-            // Filtrar elipses con α menor al valor mínimo establecido
-            if (alpha < alpha_min) {
-                continue;
-            }
+            if (alpha < alpha_min) continue;
 
-            // Crear un acumulador para los votos de beta
             int max_beta_votos = 0;
             double mejor_beta = 0;
 
-            // Para cada otro punto k distinto de t y u, calcular beta
+            #pragma omp parallel for num_threads(num_threads2) reduction(max: max_beta_votos)
             for (int k = 0; k < num_puntos_borde; k++) {
                 if (k == i || k == j) continue;
 
                 PuntoBorde p = puntos_borde[k];
-
-                // Calcular delta y gamma para el punto k
                 double delta = sqrt(pow(p.x - ox, 2) + pow(p.y - oy, 2));
                 double gamma = sin(fabs(theta)) * (p.y - oy) + cos(fabs(theta)) * (p.x - ox);
 
-                // Evitar cálculos inestables (denominador cercano a cero)
                 double denominador = alpha * alpha - gamma * gamma;
-                if (denominador <= 0) {
-                    continue; // Saltar este cálculo si el denominador es cero o negativo
-                }
+                if (denominador <= 0) continue;
 
-                // Calcular beta usando la fórmula
                 double numerador = alpha * alpha * delta * delta - alpha * alpha * gamma * gamma;
                 double beta = sqrt(numerador / denominador);
 
-                // Filtrar valores de beta demasiado grandes o pequeños
-                if (beta > 0 && beta < 100) { // Ajusta este rango según tu imagen
-                    int votos = 1; // Aquí puedes implementar un sistema de votación más complejo
+                int beta_index = (int)(beta / delta_beta);
+                if (beta_index >= 0 && beta_index < num_betas) {
+                    #pragma omp atomic
+                    vote[beta_index]++;
+                }
 
-                    // Si este valor de beta tiene más votos, lo consideramos el mejor
-                    if (votos > max_beta_votos) {
-                        max_beta_votos = votos;
-                        mejor_beta = beta;
-                    }
+                if (vote[beta_index] > max_beta_votos) {
+                    max_beta_votos = vote[beta_index];
+                    mejor_beta = beta;
                 }
             }
 
-            // Si encontramos un buen valor para beta, guardamos la elipse
             if (mejor_beta > 0) {
                 #pragma omp critical
                 {
@@ -171,11 +161,11 @@ void detectar_elipses(PuntoBorde *puntos_borde, int num_puntos_borde, double alp
 
     // Imprimir las elipses encontradas
     for (int i = 0; i < num_elipses; i++) {
-        printf("Elipse encontrada: (ox = %.2f, oy = %.2f, α = %.2f, β = %.2f, θ = %.2f)\n",
+        printf("%.2f\t%.2f\t%.2f\t%.2f\t%.2f\n",
                elipses[i].ox, elipses[i].oy, elipses[i].alpha, elipses[i].beta, elipses[i].theta);
     }
 
-    // Liberar la memoria de las elipses
+    free(vote);
     free(elipses);
 }
 
@@ -183,51 +173,44 @@ int main(int argc, char *argv[]) {
     char *input_filename = NULL;
     double alpha_min = 0;
     double relative_vote = 0;
-    int num_threads = 1;
+    int num_threads1 = 1, num_threads2 = 1;
+    int num_betas = 100;
 
-    // Manejar los argumentos de línea de comandos usando getopt()
     int opt;
-    while ((opt = getopt(argc, argv, "i:a:r:T:")) != -1) {
+    while ((opt = getopt(argc, argv, "i:a:r:b:u:d:")) != -1) {
         switch (opt) {
-            case 'i':
-                input_filename = optarg;
-                break;
-            case 'a':
-                alpha_min = atof(optarg);
-                break;
-            case 'r':
-                relative_vote = atof(optarg);
-                break;
-            case 'T':
-                num_threads = atoi(optarg);
-                break;
+            case 'i': input_filename = optarg; break;
+            case 'a': alpha_min = atof(optarg); break;
+            case 'r': relative_vote = atof(optarg); break;
+            case 'b': num_betas = atoi(optarg); break;
+            case 'u': num_threads1 = atoi(optarg); break;
+            case 'd': num_threads2 = atoi(optarg); break;
             default:
-                fprintf(stderr, "Uso: %s -i imagen.fits -a alpha_min -r relative_vote -T num_threads\n", argv[0]);
+                fprintf(stderr, "Uso: %s -i imagen.fits -a alpha_min -r relative_vote -b num_betas -u num_threads1 -d num_threads2\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
 
-    if (input_filename == NULL || alpha_min == 0 || relative_vote == 0 || num_threads == 0) {
-        fprintf(stderr, "Argumentos inválidos. Uso: %s -i imagen.fits -a alpha_min -r relative_vote -T num_threads\n", argv[0]);
+    if (!input_filename || !alpha_min || !relative_vote || !num_threads1 || !num_threads2) {
+        fprintf(stderr, "Argumentos inválidos.\n");
         return EXIT_FAILURE;
     }
 
-    // Configurar el número de hebras (threads) para OpenMP
-    omp_set_num_threads(num_threads);
+    omp_set_num_threads(num_threads1);
 
-    // Leer la imagen FITS
     int *imagen = NULL;
     long naxes[2];
     leer_fits(input_filename, &imagen, naxes);
 
-    // Detectar los píxeles de borde y crear la lista de puntos de borde
     int num_puntos_borde = 0;
     PuntoBorde *puntos_borde = detectar_bordes(imagen, naxes, &num_puntos_borde);
 
-    // Detectar las elipses usando los puntos de borde
-    detectar_elipses(puntos_borde, num_puntos_borde, alpha_min);
+    double start_time = omp_get_wtime();
+    detectar_elipses(puntos_borde, num_puntos_borde, alpha_min, num_betas, num_threads1, num_threads2);
+    double end_time = omp_get_wtime();
 
-    // Liberar la memoria
+    printf("Tiempo total: %f segundos\n", end_time - start_time);
+
     free(imagen);
     free(puntos_borde);
 

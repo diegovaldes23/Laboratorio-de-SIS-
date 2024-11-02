@@ -10,4 +10,4 @@ gcc -o fitsexample fitsexample.c -lcfitsio
 # Para ejecutar el programa lab1:
 
 make 
-./lab1 -i image.fits -a 20 -r 0.5 -T 4
+./lab1 -i elipsesimple1.fits -a 20 -r 0.5 -b 4 -u 2 -d 2
