@@ -1,0 +1,13 @@
+
+# Para ejecutar el drawelipse: 
+python3 drawelipse.py 128.32 100.76 100.01 50.33 21.23
+
+# Para ejecuta el fitsexample :
+gcc -o fitsexample fitsexample.c -lcfitsio         
+
+./fitsexample AS209_edge.fits  
+
+# Para ejecutar el programa lab1:
+
+make 
+./lab1 -i image.fits -a 20 -r 0.5 -T 4
