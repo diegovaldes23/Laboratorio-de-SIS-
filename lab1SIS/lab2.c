@@ -314,7 +314,7 @@ int main(int argc, char *argv[]) {
     double speedup_hough = time_hough_serial / time_hough_parallel;
 
     // Impresión de resultados en el formato solicitado
-    printf("%.2f\n%.2f\n%.2f\n%.2f\n%.2f\n", total_time_serial, total_time_parallel, porcion_serial * 100, speedup_general, time_hough_serial);
+    printf("%.2f\n%.2f\n%.2f%%\n%.2f\n%.2f\n", total_time_serial, total_time_parallel, porcion_serial * 100, speedup_general, time_hough_serial);
     printf("%.2f\n%.2f\n", time_hough_parallel, speedup_hough);
 
     return EXIT_SUCCESS;
