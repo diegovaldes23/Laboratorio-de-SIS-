@@ -16,7 +16,7 @@ int main(int argc, char *argv[]) {
     // Abrir archivo FITS
     if (fits_open_file(&fptr, argv[1], READONLY, &status)) {
         fits_report_error(stderr, status);
-        return status;
+        return status;./lab1 -i elipsesimple1.fits -a 20 -r 0.5 -b 4 -u 2 -d 2
     }
 
     // Obtener dimensiones de la imagen
