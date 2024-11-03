@@ -66,25 +66,43 @@ PuntoBorde* extract_borders(const char *filename, int *num_puntos_borde, long *n
         return NULL;
     }
 
-    // Se cuentan y almacenan los puntos borde
+    // Inicializa el arreglo para almacenar los puntos de borde y el contador
     PuntoBorde *puntos_borde = malloc(npixels * sizeof(PuntoBorde));
-    int contador = 0;
-    for (long y = 0; y < naxes[1]; y++) {
-        for (long x = 0; x < naxes[0]; x++) {
-            if (imagen[y * naxes[0] + x] == VALOR_BORDE) {
-                puntos_borde[contador].x = x;
-                puntos_borde[contador].y = y;
-                contador++;
+    int contador_global = 0;
+
+    // Configura el número de hilos para el bucle paralelo
+    omp_set_num_threads(num_threads_level1);
+
+    // Bloque paralelo
+    #pragma omp parallel
+    {
+        // Cada hilo tendrá su propio contador y arreglo de puntos de borde
+        PuntoBorde *puntos_locales = malloc(npixels * sizeof(PuntoBorde));
+        int contador_local = 0;
+
+        #pragma omp for collapse(2)
+        for (long y = 0; y < naxes[1]; y++) {
+            for (long x = 0; x < naxes[0]; x++) {
+                if (imagen[y * naxes[0] + x] == VALOR_BORDE) {
+                    puntos_locales[contador_local].x = x;
+                    puntos_locales[contador_local].y = y;
+                    contador_local++;
+                }
             }
         }
-    }
-    // Se redimensiona el arreglo de puntos de borde para ajustarlo al tamaño exacto
-    puntos_borde = realloc(puntos_borde, contador * sizeof(PuntoBorde));
-    *num_puntos_borde = contador;
 
-    // Se libera la memoria y se cierra el archivo fits
-    free(imagen);
-    fits_close_file(fptr, &status);
+        // Sección crítica para combinar los resultados locales en el arreglo global
+        #pragma omp critical
+        {
+            memcpy(&puntos_borde[contador_global], puntos_locales, contador_local * sizeof(PuntoBorde));
+            contador_global += contador_local;
+        }
+
+    }
+
+    // Redimensiona el arreglo de puntos de borde para ajustarlo al tamaño exacto
+    puntos_borde = realloc(puntos_borde, contador_global * sizeof(PuntoBorde));
+    *num_puntos_borde = contador_global;
     return puntos_borde;
 }
 
@@ -125,6 +143,8 @@ void detect_elipses(PuntoBorde *puntos_borde, int num_puntos_borde, double alpha
                 // Cálculo de delta y gamma
                 double delta = sqrt(pow(p.y - oy, 2) + pow(p.x - ox, 2));
                 double gamma = sin(theta) * (p.y - oy) + cos(theta) * (p.x - ox);
+
+                if(delta > alpha) continue;
 
                 // Se evitan divisiones por cero y se calcula beta
                 double denominador = alpha * alpha - gamma * gamma;
@@ -262,7 +282,7 @@ int main(int argc, char *argv[]) {
     double total_time_parallel = end_time_parallel - start_time_parallel;
 
     // 3. Porción serial del programa
-    double porcion_serial = (total_time_serial - total_time_parallel) / total_time_serial;
+    double porcion_serial = 1 - (total_time_parallel / total_time_serial);
 
     // 4. Speedup del programa
     double speedup_general = total_time_serial / total_time_parallel;
